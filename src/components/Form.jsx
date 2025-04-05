@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,16 +19,69 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { createClient } from "@/utils/supabase/client";
 
 export default function Form() {
+  const supabase = createClient();
+  const [years, setYears] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
+  const [selectedYearId, setSelectedYearId] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fileSelected, setFileSelected] = useState(false);
   const [fileName, setFileName] = useState("");
   const [responseDetails, setResponseDetails] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch years from Supabase when component mounts
+  useEffect(() => {
+    async function fetchYears() {
+      try {
+        const { data, error } = await supabase
+          .from("years")
+          .select("id, year_name")
+          .order("id");
+
+        if (error) throw error;
+        setYears(data || []);
+      } catch (error) {
+        console.error("Error fetching years:", error);
+        setErrorMessage("ไม่สามารถดึงข้อมูลปีการศึกษาได้");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchYears();
+  }, []);
+
+  // Fetch subjects when selectedYearId changes
+  useEffect(() => {
+    async function fetchSubjects() {
+      if (!selectedYearId) {
+        setSubjects([]);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("subjects")
+          .select("id, subject_name")
+          .eq("year_id", selectedYearId)
+          .order("subject_name");
+
+        if (error) throw error;
+        setSubjects(data || []);
+      } catch (error) {
+        console.error("Error fetching subjects:", error);
+        setErrorMessage("ไม่สามารถดึงข้อมูลวิชาได้");
+      }
+    }
+
+    fetchSubjects();
+  }, [selectedYearId]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -45,6 +98,17 @@ export default function Form() {
     } else {
       setFileSelected(false);
       setFileName("");
+    }
+  };
+
+  const handleYearChange = (yearValue) => {
+    const selectedYearObject = years.find(
+      (year) => year.year_name === yearValue,
+    );
+    if (selectedYearObject) {
+      setSelectedYear(yearValue);
+      setSelectedYearId(selectedYearObject.id);
+      setSelectedSubject("");
     }
   };
 
@@ -87,8 +151,8 @@ export default function Form() {
 
       event.target.reset();
       setSelectedYear("");
+      setSelectedYearId(null);
       setSelectedSubject("");
-      setSubjects([]);
       setFileSelected(false);
       setFileName("");
 
@@ -98,63 +162,6 @@ export default function Form() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleYearChange = (year) => {
-    setSelectedYear(year);
-    let subjectOptions = [];
-    switch (year) {
-      case "Year 1":
-        subjectOptions = [
-          "calculus 1",
-          "calculus 2",
-          "computer programming",
-          "drawing",
-          "engineering materials",
-          "engineering mechanics",
-          "general chemistry",
-          "general chemistry laboratory 1",
-          "general physics laboratory 2",
-          "general physics 1",
-          "general physics 2",
-        ];
-        break;
-      case "Year 2":
-        subjectOptions = [
-          "computer-aided design for manufacturing",
-          "computer and information technology for industrial engineering",
-          "electrical engineering",
-          "elementary differential equations and linear algebra",
-          "engineering metallurgy",
-          "industrial safety engineering",
-          "manufacturing processes",
-          "numerical methods for engineering",
-          "probability and statistics 1",
-          "thermodynamics",
-        ];
-        break;
-      case "Year 3":
-        subjectOptions = [
-          "economics",
-          "industrial work study",
-          "maintenance",
-          "operations research",
-          "pollution control",
-        ];
-        break;
-      case "Year 4":
-        subjectOptions = [
-          "advanced engineering management",
-          "cost analysis",
-          "logistics and supply chain management",
-          "quality management",
-        ];
-        break;
-      default:
-        subjectOptions = [];
-    }
-    setSubjects(subjectOptions);
-    setSelectedSubject("");
   };
 
   return (
@@ -170,16 +177,20 @@ export default function Form() {
               <Select
                 onValueChange={handleYearChange}
                 value={selectedYear}
+                disabled={isLoading}
                 required
               >
                 <SelectTrigger id="year" className="w-full">
-                  <SelectValue placeholder="เลือกปีการศึกษา" />
+                  <SelectValue
+                    placeholder={isLoading ? "กำลังโหลด..." : "เลือกปีการศึกษา"}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Year 1">ปี 1</SelectItem>
-                  <SelectItem value="Year 2">ปี 2</SelectItem>
-                  <SelectItem value="Year 3">ปี 3</SelectItem>
-                  <SelectItem value="Year 4">ปี 4</SelectItem>
+                  {years.map((year) => (
+                    <SelectItem key={year.id} value={year.year_name}>
+                      {year.year_name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -188,21 +199,21 @@ export default function Form() {
               <Select
                 onValueChange={setSelectedSubject}
                 value={selectedSubject}
-                disabled={!selectedYear}
+                disabled={!selectedYearId}
                 required
               >
                 <SelectTrigger id="subject" className="w-full">
                   <SelectValue
                     placeholder={
-                      selectedYear ? "เลือกวิชา" : "กรุณาเลือกปีก่อน"
+                      selectedYearId ? "เลือกวิชา" : "กรุณาเลือกปีก่อน"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
                   {subjects.length > 0 ? (
-                    subjects.map((subject, index) => (
-                      <SelectItem key={index} value={subject}>
-                        {subject}
+                    subjects.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.subject_name}>
+                        {subject.subject_name}
                       </SelectItem>
                     ))
                   ) : (
@@ -239,7 +250,7 @@ export default function Form() {
           form="uploadForm"
           type="submit"
           className="w-full"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isLoading}
         >
           {isSubmitting ? "กำลังอัพโหลด..." : "อัพโหลด"}
         </Button>
